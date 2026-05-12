@@ -9,7 +9,7 @@
     <strong>Jiawei Zhang</strong>,
     <strong>Qinhong Yang</strong>,
     <strong>Yanchen Dong</strong>,
-    <strong>Yitong Wang</strong><br />
+    <strong>Yitong Wang</strong>,
     <strong>Yunuo Chen</strong>,
     <strong>Xiuyu Wu</strong>,
     <strong>Fangyun Wei</strong>,
