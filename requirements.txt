@@ -4,7 +4,7 @@ diffusers==0.37.1
 einops==0.8.2
 huggingface_hub==1.14.0
 numpy==2.4.3
-Pillow==12.1.1
+Pillow==12.2.0
 safetensors==0.7.0
 tokenizers==0.22.2
 tqdm==4.67.3
