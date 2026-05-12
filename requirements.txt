@@ -1,6 +1,6 @@
 # Python 3.12.12, CUDA 12.6, PyTorch 2.11.0+cu126.
 accelerate==1.13.0
-diffusers==0.37.1
+diffusers==0.38.0
 einops==0.8.2
 huggingface_hub==1.14.0
 numpy==2.4.3
