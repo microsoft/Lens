@@ -371,6 +371,18 @@ python inference.py \
     --disable_mxfp4 --offload
 ```
 
+**Low-VRAM GPUs (&le;16 GB)** &mdash; split text encoding and denoising into two phases with `accelerate` device_map, so each phase fits within GPU memory:
+
+```bash
+python inference.py \
+    --repo_id "microsoft/Lens" \
+    --steps 20 --cfg 5.0 \
+    --prompt "a cat" \
+    --low_vram
+```
+
+This mode automatically dequantizes the MXFP4 text encoder, splits both the text encoder and transformer across GPU and CPU using `accelerate`, and clamps the resolution to 1024 if needed. Peak VRAM usage is ~14.5 GB for 1024&times;1024 generation.
+
 ### Options
 
 | Flag | Description | Default |
@@ -386,6 +398,7 @@ python inference.py \
 | `--dtype` | Compute dtype: `bfloat16`, `float16`, `float32` | `bfloat16` |
 | `--disable_mxfp4` | Dequantize the GPT-OSS text encoder to `--dtype` (required on A100 / V100; Hopper+ keeps MXFP4 by default for less VRAM) | &mdash; |
 | `--offload` | Enable diffusers CPU offload (`text_encoder->transformer->vae`) to reduce peak VRAM | &mdash; |
+| `--low_vram` | Split-pipeline mode for GPUs with &le;16 GB: runs text encoding and denoising in separate phases using `accelerate` device_map (auto-clamps resolution to 1024) | &mdash; |
 | `--reasoner` | Refine prompts with the loaded GPT-OSS encoder before generation | &mdash; |
 | `--api_url` / `--api_key` / `--api_model` | Use an OpenAI-compatible API for prompt refinement (takes precedence over `--reasoner`) | &mdash; |
 

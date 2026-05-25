@@ -118,6 +118,7 @@ class LensPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _optional_components = ["text_encoder", "tokenizer", "transformer", "vae"]
     _callback_tensor_inputs = [
         "latents", "prompt_embeds", "negative_prompt_embeds",
     ]
@@ -125,10 +126,10 @@ class LensPipeline(DiffusionPipeline):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKLFlux2,
-        text_encoder: LensGptOssEncoder,
-        tokenizer: PreTrainedTokenizerBase,
-        transformer: LensTransformer2DModel,
+        vae: Optional[AutoencoderKLFlux2] = None,
+        text_encoder: Optional[LensGptOssEncoder] = None,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        transformer: Optional[LensTransformer2DModel] = None,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -138,22 +139,37 @@ class LensPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
         )
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = "right"
+        if self.tokenizer is not None:
+            if self.tokenizer.pad_token_id is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.padding_side = "right"
         # Flux2 latent tile factor (4x4 patchify) and Lens DiT in_channels=128.
         self.vae_scale_factor = 16
-        self.latent_channels = self.transformer.config.in_channels
+        self.latent_channels = (
+            self.transformer.config.in_channels
+            if self.transformer is not None
+            else DEFAULT_TRANSFORMER_CONFIG["in_channels"]
+        )
         self.txt_offset = DEFAULT_TXT_OFFSET
         self.default_sample_size = 1024
 
-        if not hasattr(self.text_encoder, "_lens_selected_layers"):
-            self.text_encoder.set_selected_layers(
+        if (
+            self.text_encoder is not None
+            and not hasattr(self.text_encoder, "_lens_selected_layers")
+        ):
+            selected_layers = (
                 self.transformer.config.selected_layer_index
+                if self.transformer is not None
+                else DEFAULT_TRANSFORMER_CONFIG["selected_layer_index"]
             )
+            self.text_encoder.set_selected_layers(selected_layers)
 
-        self.reasoner = PromptReasoner(
-            text_encoder=self.text_encoder, tokenizer=self.tokenizer
+        self.reasoner = (
+            PromptReasoner(
+                text_encoder=self.text_encoder, tokenizer=self.tokenizer
+            )
+            if self.text_encoder is not None and self.tokenizer is not None
+            else None
         )
 
     # ------------------------------------------------------------------
@@ -229,32 +245,36 @@ class LensPipeline(DiffusionPipeline):
         """
         device = device or self._execution_device
 
-        prompts = [prompt] if isinstance(prompt, str) else list(prompt)
-        n = int(num_images_per_prompt)
-
-        # Negatives broadcast.
-        if isinstance(negative_prompt, str):
-            negatives = [negative_prompt] * len(prompts)
-        else:
-            negatives = list(negative_prompt)
-            if len(negatives) == 1:
-                negatives = negatives * len(prompts)
-            if len(negatives) != len(prompts):
-                raise ValueError(
-                    "negative_prompt must be a string or a list of the same "
-                    "length as prompt"
-                )
-
         if prompt_embeds is None:
+            prompts = [prompt] if isinstance(prompt, str) else list(prompt)
+            n = int(num_images_per_prompt)
+
             prompt_embeds, prompt_mask = self._get_text_embeddings(
                 prompts, max_sequence_length, device
             )
             prompt_embeds, prompt_mask = self._repeat_for_n(prompt_embeds, prompt_mask, n)
         elif prompt_mask is None:
             raise ValueError("`prompt_mask` must be provided when passing `prompt_embeds`.")
+        else:
+            # prompt_embeds provided — infer prompts list length from batch dim
+            prompts = [None] * prompt_embeds[0].shape[0]
+            n = 1
+
+        # Negatives broadcast.
         if negative_prompt_embeds is None:
+            if isinstance(negative_prompt, str):
+                negatives = [negative_prompt] * len(prompts)
+            else:
+                negatives = list(negative_prompt)
+                if len(negatives) == 1:
+                    negatives = negatives * len(prompts)
+                if len(negatives) != len(prompts):
+                    raise ValueError(
+                        "negative_prompt must be a string or a list of the same "
+                        "length as prompt"
+                    )
+
             if all(isinstance(neg, str) and not neg.strip() for neg in negatives):
-                # Empty negatives use an unconditional branch with no text tokens.
                 negative_prompt_embeds = [
                     feat.new_zeros(feat.shape) for feat in prompt_embeds
                 ]
