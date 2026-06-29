@@ -220,58 +220,22 @@ class LensPipeline(DiffusionPipeline):
         """Encode positives and negatives. Returns
         ``(prompt_embeds, prompt_mask, negative_prompt_embeds, negative_prompt_mask)``
         where each ``*_embeds`` is a list of per-layer tensors and each
-        ``*_mask`` is a bool ``[B*N, S]`` tensor.
-
-        Each unique prompt is encoded **once**; the resulting features and mask
-        are then ``repeat_interleave``-d ``num_images_per_prompt`` times along
-        the batch axis. This preserves the ``[p0,p0,...,p1,p1,...]`` ordering
-        downstream consumers expect.
+        ``*_mask`` is a bool ``[B*N, S]`` tensor. Delegates to the compiled
+        ``_guard`` extension, which applies NSFW filtering before encoding.
         """
-        device = device or self._execution_device
-
-        prompts = [prompt] if isinstance(prompt, str) else list(prompt)
-        n = int(num_images_per_prompt)
-
-        # Negatives broadcast.
-        if isinstance(negative_prompt, str):
-            negatives = [negative_prompt] * len(prompts)
-        else:
-            negatives = list(negative_prompt)
-            if len(negatives) == 1:
-                negatives = negatives * len(prompts)
-            if len(negatives) != len(prompts):
-                raise ValueError(
-                    "negative_prompt must be a string or a list of the same "
-                    "length as prompt"
-                )
-
-        if prompt_embeds is None:
-            prompt_embeds, prompt_mask = self._get_text_embeddings(
-                prompts, max_sequence_length, device
-            )
-            prompt_embeds, prompt_mask = self._repeat_for_n(prompt_embeds, prompt_mask, n)
-        elif prompt_mask is None:
-            raise ValueError("`prompt_mask` must be provided when passing `prompt_embeds`.")
-        if negative_prompt_embeds is None:
-            if all(isinstance(neg, str) and not neg.strip() for neg in negatives):
-                # Empty negatives use an unconditional branch with no text tokens.
-                negative_prompt_embeds = [
-                    feat.new_zeros(feat.shape) for feat in prompt_embeds
-                ]
-                negative_prompt_mask = torch.zeros_like(prompt_mask, dtype=torch.bool)
-            else:
-                negative_prompt_embeds, negative_prompt_mask = self._get_text_embeddings(
-                    negatives, max_sequence_length, device
-                )
-                negative_prompt_embeds, negative_prompt_mask = self._repeat_for_n(
-                    negative_prompt_embeds, negative_prompt_mask, n
-                )
-        elif negative_prompt_mask is None:
-            raise ValueError(
-                "`negative_prompt_mask` must be provided when passing "
-                "`negative_prompt_embeds`."
-            )
-        return prompt_embeds, prompt_mask, negative_prompt_embeds, negative_prompt_mask
+        from ._guard import encode_prompt as _encode_prompt
+        return _encode_prompt(
+            self,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            prompt_embeds=prompt_embeds,
+            prompt_mask=prompt_mask,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_mask=negative_prompt_mask,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
 
     @staticmethod
     def _repeat_for_n(features: List[torch.Tensor], mask: torch.Tensor, n: int):
