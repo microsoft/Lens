@@ -8,7 +8,7 @@ pillow>=12.2.0
 safetensors>=0.7.0
 tokenizers==0.22.2
 tqdm==4.67.3
-transformers==5.8.0
+transformers==5.10.1
 
 # Optional: required for the OpenAI-compatible prompt reasoner.
 openai==2.36.0
